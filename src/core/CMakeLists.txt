@@ -3,6 +3,8 @@ add_library(hypercore_core STATIC
     ContextMixer.cpp
     CharacterPredictor.cpp
     IPredictor.cpp
+    BitWriter.cpp
+    RansEncoder.cpp
 )
 
 target_include_directories(hypercore_core
