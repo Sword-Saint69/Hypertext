@@ -52,8 +52,8 @@ TEST(ArchiveWriter, BasicWriteAndFinalize) {
     EXPECT_EQ(magic[2], 'X');
     EXPECT_EQ(magic[3], '\x01');
     
-    // Skip to block data offset 64
-    in.seekg(64, std::ios::beg);
+    // Skip to block data offset 68
+    in.seekg(68, std::ios::beg);
     u8 block_buf[4];
     in.read(reinterpret_cast<char*>(block_buf), 4);
     EXPECT_EQ(block_buf[0], 0xDE);

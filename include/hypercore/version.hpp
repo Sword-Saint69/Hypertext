@@ -6,11 +6,11 @@
 
 namespace hypercore {
 
-inline constexpr int VERSION_MAJOR = 2;
-inline constexpr int VERSION_MINOR = 10;
+inline constexpr int VERSION_MAJOR = 3;
+inline constexpr int VERSION_MINOR = 0;
 inline constexpr int VERSION_PATCH = 0;
 
-inline constexpr const char* VERSION_STRING = "2.10.0";
+inline constexpr const char* VERSION_STRING = "3.0.0";
 inline constexpr const char* PROJECT_NAME   = "HyperCore";
 
 } // namespace hypercore
