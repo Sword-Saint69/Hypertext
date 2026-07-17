@@ -43,8 +43,9 @@ QuantizedDistribution QuantizedDistribution::from(const ByteDistribution& dist) 
     
     // First pass: simply multiply by TABLE_SIZE and floor
     for (u32 i = 0; i < 256; ++i) {
-        u32 count = static_cast<u32>(dist[static_cast<u8>(i)] * static_cast<f32>(TABLE_SIZE));
-        q[static_cast<u8>(i)] = count;
+        u8 b = static_cast<u8>(i & 0xFF);
+        u32 count = static_cast<u32>(dist[b] * static_cast<f32>(TABLE_SIZE));
+        q[b] = count;
         total += count;
     }
     
@@ -54,29 +55,31 @@ QuantizedDistribution QuantizedDistribution::from(const ByteDistribution& dist) 
     if (total < TABLE_SIZE) {
         u32 remainder = TABLE_SIZE - total;
         // Find max element
-        int max_idx = 0;
-        u32 max_val = q[0];
+        u8 max_idx = 0;
+        u32 max_val = q[static_cast<u8>(0)];
         for (u32 i = 1; i < 256; ++i) {
-            if (q[static_cast<u8>(i)] > max_val) {
-                max_val = q[static_cast<u8>(i)];
-                max_idx = static_cast<int>(i);
+            u8 b = static_cast<u8>(i & 0xFF);
+            if (q[b] > max_val) {
+                max_val = q[b];
+                max_idx = b;
             }
         }
-        q[static_cast<u8>(max_idx)] += remainder;
+        q[max_idx] += remainder;
     } else if (total > TABLE_SIZE) {
         // This shouldn't normally happen with flooring, but just in case
         u32 excess = total - TABLE_SIZE;
         // Find max element and subtract
-        int max_idx = 0;
-        u32 max_val = q[0];
+        u8 max_idx = 0;
+        u32 max_val = q[static_cast<u8>(0)];
         for (u32 i = 1; i < 256; ++i) {
-            if (q[static_cast<u8>(i)] > max_val) {
-                max_val = q[static_cast<u8>(i)];
-                max_idx = static_cast<int>(i);
+            u8 b = static_cast<u8>(i & 0xFF);
+            if (q[b] > max_val) {
+                max_val = q[b];
+                max_idx = b;
             }
         }
-        if (q[static_cast<u8>(max_idx)] >= excess) {
-            q[static_cast<u8>(max_idx)] -= excess;
+        if (q[max_idx] >= excess) {
+            q[max_idx] -= excess;
         }
     }
     
