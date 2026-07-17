@@ -31,6 +31,9 @@ using namespace hypercore;
 #include <hypercore/analysis/FileAnalyzer.hpp>
 #include <hypercore/analysis/PatternMiner.hpp>
 #include <hypercore/analysis/GrammarBuilder.hpp>
+#include <hypercore/core/ContextMixer.hpp>
+#include <hypercore/core/CharacterPredictor.hpp>
+#include <cmath>
 #include <fstream>
 #include <vector>
 
@@ -150,6 +153,40 @@ static int cmd_compress(const std::string& input,
             spdlog::info("  Original Length : {}", b.size());
             spdlog::info("  Compressed Len  : {}", grammar.get_compressed_sequence().size());
             spdlog::info("  Rules Generated : {}", grammar.get_rules().size());
+
+            spdlog::info("Running Prediction Engine Simulation...");
+            ContextMixer mixer;
+            mixer.add_predictor(std::make_unique<CharacterPredictor>());
+            
+            PredictorContext p_ctx;
+            p_ctx.island = meta.global_island_hint;
+            
+            f64 total_entropy = 0.0;
+            const u8* data = b.data();
+            for (u32 i = 0; i < b.size(); ++i) {
+                p_ctx.position = i;
+                p_ctx.history = ByteSpan(data, i); // Up to current byte
+                
+                ByteDistribution dist = mixer.predict(p_ctx);
+                u8 actual_byte = data[i];
+                
+                // Add the negative log2 probability to our entropy sum (cross-entropy)
+                f32 p = dist[actual_byte];
+                if (p > 0.0f) {
+                    total_entropy += -std::log2(p);
+                } else {
+                    total_entropy += 32.0; // penalty for zero probability (should not happen with smoothing)
+                }
+                
+                // Update the model with what actually happened
+                mixer.update(p_ctx, actual_byte);
+            }
+            
+            f64 bpb = total_entropy / b.size();
+            spdlog::info("Prediction Results:");
+            spdlog::info("  Total Entropy   : {:.2f} bits", total_entropy);
+            spdlog::info("  Bits Per Byte   : {:.3f} bpb", bpb);
+            spdlog::info("  Estimated Ratio : {:.2f}x", 8.0 / bpb);
         }
         return EXIT_SUCCESS;
     }
