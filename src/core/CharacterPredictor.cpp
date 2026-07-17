@@ -30,8 +30,8 @@ ByteDistribution CharacterPredictor::predict(const PredictorContext& ctx) {
     u32 total = m_totals[prev_byte];
     f32 inv_total = 1.0f / static_cast<f32>(total);
 
-    for (int i = 0; i < 256; ++i) {
-        dist[i] = static_cast<f32>(counts[i]) * inv_total;
+    for (u32 i = 0; i < 256; ++i) {
+        dist[static_cast<u8>(i)] = static_cast<f32>(counts[i]) * inv_total;
     }
 
     // dist.normalize() is implicitly handled because the math guarantees it sums to 1.

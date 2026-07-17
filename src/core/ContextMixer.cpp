@@ -19,8 +19,8 @@ ByteDistribution ContextMixer::predict(const PredictorContext& ctx) {
     if (m_predictors.empty()) {
         // Uniform distribution fallback
         f32 uniform = 1.0f / 256.0f;
-        for (int i = 0; i < 256; ++i) {
-            mixed[i] = uniform;
+        for (u32 i = 0; i < 256; ++i) {
+            mixed[static_cast<u8>(i)] = uniform;
         }
         return mixed;
     }
@@ -31,15 +31,15 @@ ByteDistribution ContextMixer::predict(const PredictorContext& ctx) {
     // First, accumulate probabilities
     for (auto& predictor : m_predictors) {
         ByteDistribution p = predictor->predict(ctx);
-        for (int i = 0; i < 256; ++i) {
-            mixed[i] += p[i];
+        for (u32 i = 0; i < 256; ++i) {
+            mixed[static_cast<u8>(i)] += p[static_cast<u8>(i)];
         }
     }
 
     // Average them
     f32 weight = 1.0f / static_cast<f32>(m_predictors.size());
-    for (int i = 0; i < 256; ++i) {
-        mixed[i] *= weight;
+    for (u32 i = 0; i < 256; ++i) {
+        mixed[static_cast<u8>(i)] *= weight;
     }
 
     // Ensure it's perfectly normalized (floating point math can drift)
