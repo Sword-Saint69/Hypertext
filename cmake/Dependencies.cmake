@@ -54,6 +54,17 @@ FetchContent_MakeAvailable(blake3)
 # BLAKE3's CMakeLists doesn't set BUILD_INTERFACE for includes
 target_include_directories(blake3 PUBLIC $<BUILD_INTERFACE:${blake3_SOURCE_DIR}/c>)
 
+# ── BS::thread_pool (C++17 Thread Pool) ────────────────────────────────────
+FetchContent_Declare(
+    thread_pool
+    GIT_REPOSITORY  https://github.com/bshoshany/thread-pool.git
+    GIT_TAG         v4.1.0
+    GIT_SHALLOW     TRUE
+)
+set(BS_THREAD_POOL_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
+set(BS_THREAD_POOL_ENABLE_BENCHMARKS OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(thread_pool)
+
 # ── Google Benchmark (micro-benchmarks) — optional ───────────────────────────
 if(HYPERCORE_BUILD_TOOLS)
     FetchContent_Declare(
