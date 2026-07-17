@@ -10,6 +10,7 @@ target_link_libraries(htx
             hypercore_release_flags
             spdlog::spdlog
             CLI11::CLI11
+            bs::thread_pool
 )
 
 set_target_properties(htx PROPERTIES
