@@ -1,0 +1,405 @@
+HyperCore – A Next-Generation Hybrid CPU-GPU Lossless Text Compression System
+Overview
+
+HyperCore is a proposed next-generation lossless text compression architecture designed specifically for modern heterogeneous computing systems. Unlike traditional compressors that primarily rely on sequential CPU-based processing, HyperCore distributes the workload between multicore CPUs and GPUs, enabling large portions of the compression pipeline to execute in parallel while preserving deterministic, lossless reconstruction.
+
+The project is not intended to be another implementation of CMIX, PAQ, or Zstd. Instead, it aims to rethink the entire compression pipeline from first principles, making it inherently parallel and optimized for today's hardware.
+
+Motivation
+
+Current state-of-the-art text compressors such as CMIX achieve exceptional compression ratios through sophisticated context mixing and adaptive probability prediction. However, they suffer from several limitations:
+
+Extremely slow compression speeds.
+Minimal utilization of multicore CPUs.
+No practical GPU acceleration.
+Sequential prediction models that limit scalability.
+General-purpose processing instead of text-aware optimization.
+
+HyperCore addresses these issues by separating highly parallel tasks from inherently sequential tasks and assigning each to the hardware best suited for it.
+
+Core Philosophy
+
+The central philosophy behind HyperCore is:
+
+Compress semantics first, encode bits second.
+
+Rather than immediately applying entropy coding to raw bytes, HyperCore first analyzes the structure of the text, discovers repeated patterns, constructs adaptive dictionaries and grammar representations, builds specialized context models, and only then performs entropy coding.
+
+This reduces redundancy before statistical encoding begins.
+
+Hybrid CPU–GPU Architecture
+
+HyperCore adopts a cooperative processing model.
+
+GPU Responsibilities
+
+The GPU accelerates computationally intensive, massively parallel tasks such as:
+
+Tokenization
+UTF-8 validation
+Character classification
+N-gram extraction
+Phrase mining
+Rolling hash computation
+Frequency analysis
+Dictionary candidate generation
+Pattern discovery
+Grammar candidate generation
+Entropy estimation
+Parallel rANS encoding
+
+Thousands of GPU threads process independent data simultaneously.
+
+CPU Responsibilities
+
+The CPU manages operations requiring synchronization and adaptive decision making:
+
+File analysis
+Compression scheduling
+Dictionary optimization
+Grammar optimization
+Context selection
+Probability mixing
+Archive generation
+Metadata management
+Integrity verification
+Context Islands (Novel Concept)
+
+One of the key innovations is Context Islands.
+
+Traditional compressors often build a single global statistical model for the entire input. HyperCore instead partitions the document into semantic regions such as:
+
+Natural language
+Source code
+JSON
+XML
+CSV
+Markdown
+Log files
+
+Each region is compressed using a specialized context model.
+
+This improves prediction quality because each model learns statistics only from similar content instead of mixing unrelated structures.
+
+Multi-Level Dictionary System
+
+Instead of using a single dictionary, HyperCore employs a hierarchical approach:
+
+Global dictionary
+Document-specific dictionary
+Block-specific dictionary
+
+Each level captures redundancy at different scales.
+
+The encoder dynamically selects the most efficient representation.
+
+Grammar-Based Structure Compression
+
+Beyond repeated words, HyperCore identifies recurring structural patterns and converts them into reusable grammar rules.
+
+Examples include:
+
+Common programming constructs
+JSON objects
+XML elements
+Markdown patterns
+Log templates
+
+These structures are represented once and referenced throughout the archive.
+
+Adaptive Prediction
+
+Rather than evaluating every prediction model for every symbol, HyperCore dynamically selects only the most relevant models based on the current context.
+
+Possible predictors include:
+
+Character model
+Word model
+Phrase model
+Dictionary model
+Grammar model
+Structural model
+Optional lightweight neural predictor
+
+Their outputs are combined using an adaptive probability mixer.
+
+GPU-Friendly Entropy Coding
+
+Instead of relying solely on arithmetic coding, HyperCore uses parallel-friendly rANS (Range Asymmetric Numeral Systems), which offers high compression efficiency while allowing significantly greater parallelism.
+
+The GPU performs entropy coding across multiple blocks simultaneously.
+
+Parallel Pipeline
+
+The compression pipeline is designed so that CPU and GPU remain active concurrently.
+
+While the GPU processes one block:
+
+The CPU prepares the next block.
+Previous blocks are archived.
+Metadata is generated.
+Dictionaries are updated.
+
+This minimizes idle hardware and maximizes throughput.
+
+Expected Advantages
+
+If successfully implemented, HyperCore aims to provide:
+
+Compression ratios approaching CMIX on text-heavy datasets.
+Significantly faster compression through CPU-GPU cooperation.
+Efficient scaling across many CPU cores and modern GPUs.
+Optimized performance for source code, documentation, logs, JSON, XML, Markdown, and similar text formats.
+A modular architecture that supports future predictors, plugins, and research extensions.
+Research Contribution
+
+The primary research contribution is architectural, not merely algorithmic.
+
+Instead of inventing a single new entropy coder or prediction model, HyperCore proposes a complete redesign of the lossless text compression pipeline around heterogeneous computing.
+
+The novelty lies in:
+
+Semantic-aware preprocessing.
+Context Islands.
+Hierarchical adaptive dictionaries.
+GPU-first pattern discovery.
+Hybrid CPU-GPU scheduling.
+Parallel-friendly entropy coding.
+Modular predictor architecture.
+
+Together, these ideas seek to narrow the long-standing gap between maximum compression ratio and practical compression speed, making CMIX-class compression more feasible for real-world use on modern hardware.
+
+Technology Stack
+Stack 1 – Core Compression Engine
+C++23
+CMake
+STL
+Concepts
+Templates
+Modules
+Memory pools
+Lock-free data structures
+
+Purpose: Core compression algorithms and engine.
+
+Stack 2 – GPU Computing
+CUDA
+CUDA Streams
+Thrust
+CUB
+cuCollections
+Nsight Compute
+Nsight Systems
+
+Purpose: Parallel preprocessing and entropy coding.
+
+Stack 3 – CPU Optimization
+OpenMP
+Intel TBB (or std::execution)
+SIMD (AVX2, AVX-512, NEON)
+NUMA-aware memory allocation
+Thread pools
+
+Purpose: High-performance multicore execution.
+
+Stack 4 – Text Processing
+UTF-8 parser
+Unicode library (ICU or utf8cpp)
+Tokenizers
+Language detectors
+Lexical analyzers
+
+Purpose: Semantic understanding of text.
+
+Stack 5 – Pattern Mining
+Rolling Hash
+Rabin Fingerprint
+Suffix Array
+Suffix Automaton
+Radix Sort
+FM Index (optional)
+
+Purpose: Discover repeated patterns efficiently.
+
+Stack 6 – Prediction Engine
+Character models
+Word models
+Context models
+Grammar models
+Probability mixer
+Optional tiny neural model (RWKV/Mamba)
+
+Purpose: High-quality probability estimation.
+
+Stack 7 – Entropy Coding
+rANS
+tANS
+Range Coding (optional)
+Huffman (fallback)
+
+Purpose: Final lossless encoding.
+
+Stack 8 – Archive System
+Binary file format
+Metadata
+Dictionary storage
+Grammar storage
+Versioning
+Random access
+
+Purpose: Portable archive format.
+
+Stack 9 – Reliability
+CRC32
+CRC64
+BLAKE3
+Recovery records
+Error detection
+Archive validation
+
+Purpose: Data integrity.
+
+Stack 10 – Benchmarking
+Google Benchmark
+perf
+Nsight
+VTune
+Tracy Profiler
+
+Purpose: Performance analysis.
+
+Development Phases
+Phase 1 — Research & Planning
+Study CMIX
+Study PAQ
+Study ANS
+Study GPU compression
+Study grammar compression
+Design architecture
+Define goals
+Create benchmarks
+
+Deliverable: Research document + architecture.
+
+Phase 2 — Foundation
+Create repository
+Build system (CMake)
+Logging
+Memory manager
+Thread pool
+CLI
+Unit testing
+
+Deliverable: Working project skeleton.
+
+Phase 3 — Text Analysis
+File detection
+Encoding detection
+Language detection
+Tokenization
+Region detection
+Block splitter
+
+Deliverable: Structured token stream.
+
+Phase 4 — Pattern Discovery
+Rolling hashes
+N-grams
+Frequency analysis
+Phrase mining
+Repeated pattern detection
+Dictionary generation
+
+Deliverable: Candidate compression structures.
+
+Phase 5 — Grammar System
+Grammar rule generation
+Grammar optimization
+Graph construction
+Rule replacement
+
+Deliverable: Grammar-compressed representation.
+
+Phase 6 — Context Modeling
+Character predictor
+Word predictor
+Phrase predictor
+Context Islands
+Adaptive probability mixer
+
+Deliverable: Probability engine.
+
+Phase 7 — Entropy Coding
+Implement rANS
+Decoder
+Metadata encoding
+Archive bitstream
+
+Deliverable: End-to-end lossless compression.
+
+Phase 8 — GPU Acceleration
+CUDA tokenizer
+CUDA histogram
+CUDA phrase mining
+CUDA dictionary statistics
+CUDA rANS
+CUDA memory optimization
+
+Deliverable: GPU-accelerated pipeline.
+
+Phase 9 — CPU Optimization
+SIMD
+AVX2/AVX-512
+Lock-free queues
+NUMA optimization
+Streaming pipeline
+
+Deliverable: High CPU utilization.
+
+Phase 10 — Archive Format
+.htx specification
+Headers
+Metadata
+Block index
+Recovery records
+Version compatibility
+
+Deliverable: Stable archive format.
+
+Phase 11 — Validation
+Unit tests
+Fuzz testing
+Regression tests
+Differential testing
+Corpus verification
+
+Deliverable: Reliable compressor.
+
+Phase 12 — Benchmarking
+Canterbury Corpus
+Calgary Corpus
+Silesia Corpus
+Large GitHub repositories
+Wikipedia dumps
+JSON datasets
+Log datasets
+
+Compare against:
+
+Zstd
+Brotli
+XZ
+7-Zip
+PAQ
+CMIX
+
+Deliverable: Performance report.
+
+Phase 13 — Advanced Features
+Streaming compression
+Random-access decompression
+Incremental compression
+Plugin system
+Optional neural predictor
+
+Deliverable: Feature-complete compressor.

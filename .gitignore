@@ -1,0 +1,66 @@
+# Build artifacts
+build/
+out/
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dll
+*.exe
+*.pdb
+*.ilk
+*.exp
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+_deps/
+install_manifest.txt
+
+# CUDA
+*.ptx
+*.cubin
+*.fatbin
+
+# IDE files
+.vscode/
+.idea/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.user
+
+# CLion
+cmake-build-*/
+
+# Compiler-generated
+*.d
+*.gcno
+*.gcda
+*.gcov
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Benchmark output
+benchmarks/results/
+benchmarks/corpora/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary
+*.tmp
+*.bak
+*.swp
+*~
