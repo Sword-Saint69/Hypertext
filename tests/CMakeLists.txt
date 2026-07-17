@@ -4,6 +4,7 @@ add_executable(hypercore_tests
     test_allocator.cpp
     test_analysis.cpp
     test_file_analysis.cpp
+    test_pattern_mining.cpp
 )
 
 target_link_libraries(hypercore_tests
