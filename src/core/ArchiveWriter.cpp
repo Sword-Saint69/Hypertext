@@ -15,12 +15,12 @@ ArchiveWriter::~ArchiveWriter() {
 
 Status ArchiveWriter::open(const std::string& path) {
     if (m_is_open) {
-        return Status::Error("ArchiveWriter is already open");
+        return std::unexpected(Error::InternalError);
     }
 
     m_file.open(path, std::ios::out | std::ios::binary | std::ios::trunc);
     if (!m_file.is_open()) {
-        return Status::Error("Failed to open file for writing: " + path);
+        return std::unexpected(Error::FileWriteError);
     }
     m_is_open = true;
 
@@ -53,11 +53,11 @@ Status ArchiveWriter::open(const std::string& path) {
     // Wait, the documentation said 64 bytes, but 4+2+2+8+4+8+8+32 = 68. 
     // This is fine, we just need to match it when reading.
     
-    return Status::Ok();
+    return ok();
 }
 
 Status ArchiveWriter::write_block(const BlockEntry& /*entry*/, ByteSpan compressed_data) {
-    if (!m_is_open) return Status::Error("ArchiveWriter not open");
+    if (!m_is_open) return std::unexpected(Error::InternalError);
 
     // The caller is expected to have populated `entry` with everything except maybe offset.
     // But since the API passes entry by const ref, we don't modify it here. The caller
@@ -66,17 +66,17 @@ Status ArchiveWriter::write_block(const BlockEntry& /*entry*/, ByteSpan compress
 }
 
 Status ArchiveWriter::write_global_dict(ByteSpan dict_data) {
-    if (!m_is_open) return Status::Error("ArchiveWriter not open");
+    if (!m_is_open) return std::unexpected(Error::InternalError);
     return write_raw(dict_data.data(), dict_data.size());
 }
 
 Status ArchiveWriter::write_grammar(ByteSpan grammar_data) {
-    if (!m_is_open) return Status::Error("ArchiveWriter not open");
+    if (!m_is_open) return std::unexpected(Error::InternalError);
     return write_raw(grammar_data.data(), grammar_data.size());
 }
 
 Status ArchiveWriter::finalize(const ArchiveHeader& header, const std::vector<BlockEntry>& index) {
-    if (!m_is_open) return Status::Error("ArchiveWriter not open");
+    if (!m_is_open) return std::unexpected(Error::InternalError);
 
     // 1. Write the block index at the current end of file
     for (const auto& entry : index) {
@@ -105,16 +105,16 @@ Status ArchiveWriter::finalize(const ArchiveHeader& header, const std::vector<Bl
     m_file.close();
     m_is_open = false;
 
-    return Status::Ok();
+    return ok();
 }
 
 Status ArchiveWriter::write_raw(const void* data, size_t size) {
-    if (size == 0) return Status::Ok();
+    if (size == 0) return ok();
     m_file.write(reinterpret_cast<const char*>(data), size);
     if (!m_file.good()) {
-        return Status::Error("Failed to write to file stream");
+        return std::unexpected(Error::FileWriteError);
     }
-    return Status::Ok();
+    return ok();
 }
 
 } // namespace hypercore

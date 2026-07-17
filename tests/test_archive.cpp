@@ -18,7 +18,7 @@ TEST(ArchiveWriter, BasicWriteAndFinalize) {
     }
     
     ArchiveWriter writer;
-    ASSERT_TRUE(writer.open(test_file).is_ok());
+    ASSERT_TRUE(writer.open(test_file).has_value());
     
     // Dummy block
     std::vector<u8> block_data = { 0xDE, 0xAD, 0xBE, 0xEF };
@@ -26,9 +26,9 @@ TEST(ArchiveWriter, BasicWriteAndFinalize) {
     entry.offset = 64;
     entry.compressed_size = 4;
     entry.original_size = 10;
-    entry.dominant_island = static_cast<u8>(IslandType::Text);
+    entry.dominant_island = static_cast<u8>(IslandType::Markdown);
     
-    ASSERT_TRUE(writer.write_block(entry, ByteSpan(block_data.data(), block_data.size())).is_ok());
+    ASSERT_TRUE(writer.write_block(entry, ByteSpan(block_data.data(), block_data.size())).has_value());
     
     ArchiveHeader header;
     header.num_blocks = 1;
@@ -38,7 +38,7 @@ TEST(ArchiveWriter, BasicWriteAndFinalize) {
     
     std::vector<BlockEntry> index = { entry };
     
-    ASSERT_TRUE(writer.finalize(header, index).is_ok());
+    ASSERT_TRUE(writer.finalize(header, index).has_value());
     
     // Verify file contents
     std::ifstream in(test_file, std::ios::binary);

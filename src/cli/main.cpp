@@ -211,18 +211,21 @@ static int cmd_compress(const std::string& input,
             if (!analyze_only) {
                 spdlog::info("Running Phase 8 Archive Assembly...");
                 ArchiveWriter archive;
-                if (!archive.open(output_path).is_ok()) {
-                    spdlog::error("Failed to open output file: {}", output_path);
+                if (!archive.open(output).has_value()) {
+                    spdlog::error("Failed to open output file: {}", output);
                     return EXIT_FAILURE;
                 }
 
                 BlockEntry b_entry;
-                b_entry.original_size = b.size();
-                b_entry.compressed_size = bit_writer.get_buffer().size();
+                b_entry.original_size = static_cast<u32>(b.size());
+                b_entry.compressed_size = static_cast<u32>(bit_writer.get_buffer().size());
                 b_entry.dominant_island = static_cast<u8>(meta.global_island_hint);
                 
                 // Currently writing block data
-                archive.write_block(b_entry, ByteSpan(bit_writer.get_buffer().data(), bit_writer.get_buffer().size()));
+                if (!archive.write_block(b_entry, ByteSpan(bit_writer.get_buffer().data(), bit_writer.get_buffer().size())).has_value()) {
+                    spdlog::error("Failed to write block to archive");
+                    return EXIT_FAILURE;
+                }
 
                 // For now, no dictionary/grammar sections written as bytes, we will do that in later phases.
                 ArchiveHeader a_head;
@@ -231,9 +234,12 @@ static int cmd_compress(const std::string& input,
                 // Leave BLAKE3 zeroed out as planned.
                 
                 std::vector<BlockEntry> b_index = { b_entry };
-                archive.finalize(a_head, b_index);
+                if (!archive.finalize(a_head, b_index).has_value()) {
+                    spdlog::error("Failed to finalize archive");
+                    return EXIT_FAILURE;
+                }
 
-                spdlog::info("Archive assembled successfully at {}", output_path);
+                spdlog::info("Archive assembled successfully at {}", output);
             }
         }
         return EXIT_SUCCESS;
