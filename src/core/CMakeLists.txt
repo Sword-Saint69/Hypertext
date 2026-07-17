@@ -2,6 +2,7 @@ add_library(hypercore_core STATIC
     Block.cpp
     ContextMixer.cpp
     CharacterPredictor.cpp
+    IPredictor.cpp
 )
 
 target_include_directories(hypercore_core
