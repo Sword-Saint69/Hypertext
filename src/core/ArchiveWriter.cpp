@@ -33,21 +33,21 @@ Status ArchiveWriter::open(const std::string& path) {
     // Let's write the exact fields.
     
     // Magic: 4 bytes
-    write_raw(dummy_header.magic, 4);
+    (void)write_raw(dummy_header.magic, 4);
     // Version: 2 bytes
-    write_raw(&dummy_header.format_version, 2);
+    (void)write_raw(&dummy_header.format_version, 2);
     // Flags: 2 bytes
-    write_raw(&dummy_header.flags, 2);
+    (void)write_raw(&dummy_header.flags, 2);
     // Original size: 8 bytes
-    write_raw(&dummy_header.original_size, 8);
+    (void)write_raw(&dummy_header.original_size, 8);
     // Num blocks: 4 bytes
-    write_raw(&dummy_header.num_blocks, 4);
+    (void)write_raw(&dummy_header.num_blocks, 4);
     // Dict offset: 8 bytes
-    write_raw(&dummy_header.dict_offset, 8);
+    (void)write_raw(&dummy_header.dict_offset, 8);
     // Grammar offset: 8 bytes
-    write_raw(&dummy_header.grammar_offset, 8);
+    (void)write_raw(&dummy_header.grammar_offset, 8);
     // Blake3 hash: 32 bytes
-    write_raw(dummy_header.blake3, 32);
+    (void)write_raw(dummy_header.blake3, 32);
     
     // Total written: 4 + 2 + 2 + 8 + 4 + 8 + 8 + 32 = 68 bytes.
     // Wait, the documentation said 64 bytes, but 4+2+2+8+4+8+8+32 = 68. 
@@ -80,26 +80,26 @@ Status ArchiveWriter::finalize(const ArchiveHeader& header, const std::vector<Bl
 
     // 1. Write the block index at the current end of file
     for (const auto& entry : index) {
-        write_raw(&entry.offset, 8);
-        write_raw(&entry.compressed_size, 4);
-        write_raw(&entry.original_size, 4);
-        write_raw(&entry.dominant_island, 1);
+        (void)write_raw(&entry.offset, 8);
+        (void)write_raw(&entry.compressed_size, 4);
+        (void)write_raw(&entry.original_size, 4);
+        (void)write_raw(&entry.dominant_island, 1);
         // padding for alignment (3 bytes)
         u8 pad[3] = {0, 0, 0};
-        write_raw(pad, 3);
+        (void)write_raw(pad, 3);
     }
     
     // 2. Rewind to beginning and overwrite the header
     m_file.seekp(0, std::ios::beg);
     
-    write_raw(header.magic, 4);
-    write_raw(&header.format_version, 2);
-    write_raw(&header.flags, 2);
-    write_raw(&header.original_size, 8);
-    write_raw(&header.num_blocks, 4);
-    write_raw(&header.dict_offset, 8);
-    write_raw(&header.grammar_offset, 8);
-    write_raw(header.blake3, 32);
+    (void)write_raw(header.magic, 4);
+    (void)write_raw(&header.format_version, 2);
+    (void)write_raw(&header.flags, 2);
+    (void)write_raw(&header.original_size, 8);
+    (void)write_raw(&header.num_blocks, 4);
+    (void)write_raw(&header.dict_offset, 8);
+    (void)write_raw(&header.grammar_offset, 8);
+    (void)write_raw(header.blake3, 32);
 
     // 3. Close the file
     m_file.close();
