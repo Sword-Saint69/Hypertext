@@ -5,6 +5,7 @@ add_library(hypercore_core STATIC
     IPredictor.cpp
     BitWriter.cpp
     RansEncoder.cpp
+    ArchiveWriter.cpp
 )
 
 target_include_directories(hypercore_core

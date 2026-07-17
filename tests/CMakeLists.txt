@@ -8,6 +8,7 @@ add_executable(hypercore_tests
     test_grammar.cpp
     test_prediction.cpp
     test_entropy.cpp
+    test_archive.cpp
 )
 
 target_link_libraries(hypercore_tests

@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.25)
 # Project declaration
 # ─────────────────────────────────────────────────────────────────────────────
 project(hypercore
-    VERSION     2.6.0
+    VERSION     2.7.0
     DESCRIPTION "Next-generation hybrid CPU-GPU lossless text compression"
     LANGUAGES   CXX
 )
