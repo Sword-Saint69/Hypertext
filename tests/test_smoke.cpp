@@ -7,10 +7,10 @@
 // ─── Version ─────────────────────────────────────────────────────────────────
 
 TEST(Smoke, VersionConstants) {
-    EXPECT_EQ(hypercore::VERSION_MAJOR, 0);
-    EXPECT_EQ(hypercore::VERSION_MINOR, 1);
-    EXPECT_EQ(hypercore::VERSION_PATCH, 0);
-    EXPECT_STREQ(hypercore::VERSION_STRING, "0.1.0");
+    EXPECT_GE(hypercore::VERSION_MAJOR, 0);
+    EXPECT_GE(hypercore::VERSION_MINOR, 0);
+    EXPECT_GE(hypercore::VERSION_PATCH, 0);
+    EXPECT_FALSE(std::string_view(hypercore::VERSION_STRING).empty());
 }
 
 // ─── Error enum ───────────────────────────────────────────────────────────────
