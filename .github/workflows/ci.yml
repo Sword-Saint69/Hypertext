@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  # ─── Linux / GCC ────────────────────────────────────────────────────────────
+  build-linux-gcc:
+    name: Linux (GCC 13, CPU-only)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            gcc-13 g++-13 \
+            cmake ninja-build \
+            libopenblas-dev
+
+      - name: Configure (Release)
+        run: |
+          cmake --preset release \
+            -DCMAKE_C_COMPILER=gcc-13 \
+            -DCMAKE_CXX_COMPILER=g++-13
+
+      - name: Build
+        run: cmake --build build/release --parallel
+
+      - name: Test
+        run: ctest --test-dir build/release --output-on-failure --parallel 4
+
+  # ─── Linux / Clang ──────────────────────────────────────────────────────────
+  build-linux-clang:
+    name: Linux (Clang 17, CPU-only)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            clang-17 \
+            cmake ninja-build
+
+      - name: Configure (Debug)
+        run: |
+          cmake --preset debug \
+            -DCMAKE_C_COMPILER=clang-17 \
+            -DCMAKE_CXX_COMPILER=clang++-17
+
+      - name: Build
+        run: cmake --build build/debug --parallel
+
+      - name: Test
+        run: ctest --test-dir build/debug --output-on-failure --parallel 4
+
+  # ─── Windows / MSVC ─────────────────────────────────────────────────────────
+  build-windows-msvc:
+    name: Windows (MSVC, CPU-only)
+    runs-on: windows-2022
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup MSVC
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Install Ninja
+        run: choco install ninja -y
+
+      - name: Configure (Release)
+        run: |
+          cmake -B build/release -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DHYPERCORE_BUILD_TESTS=ON
+        shell: pwsh
+
+      - name: Build
+        run: cmake --build build/release --parallel
+
+      - name: Test
+        run: ctest --test-dir build/release --output-on-failure
+
+  # ─── AddressSanitizer ───────────────────────────────────────────────────────
+  asan:
+    name: Linux (ASan + UBSan)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y clang-17 cmake ninja-build
+
+      - name: Configure (ASan)
+        run: |
+          cmake --preset asan \
+            -DCMAKE_C_COMPILER=clang-17 \
+            -DCMAKE_CXX_COMPILER=clang++-17
+
+      - name: Build
+        run: cmake --build build/asan --parallel
+
+      - name: Test
+        run: |
+          ASAN_OPTIONS=detect_leaks=1 \
+          UBSAN_OPTIONS=print_stacktrace=1 \
+          ctest --test-dir build/asan --output-on-failure
