@@ -61,9 +61,13 @@ FetchContent_Declare(
     GIT_TAG         v4.1.0
     GIT_SHALLOW     TRUE
 )
-set(BS_THREAD_POOL_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
-set(BS_THREAD_POOL_ENABLE_BENCHMARKS OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(thread_pool)
+# It is header-only and doesn't have a CMakeLists.txt on v4.1.0
+if (NOT TARGET bs::thread_pool)
+    add_library(bs_thread_pool INTERFACE)
+    target_include_directories(bs_thread_pool INTERFACE ${thread_pool_SOURCE_DIR}/include)
+    add_library(bs::thread_pool ALIAS bs_thread_pool)
+endif()
 
 # ── Google Benchmark (micro-benchmarks) — optional ───────────────────────────
 if(HYPERCORE_BUILD_TOOLS)
