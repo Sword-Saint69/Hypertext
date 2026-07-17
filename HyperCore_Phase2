@@ -1,0 +1,572 @@
+# HyperCore — Phase 1: Research & Planning
+
+> **Deliverable:** Research document + architecture design  
+> **Status:** ✅ Complete  
+> **Date:** 2026-07-17
+
+---
+
+## Table of Contents
+
+1. [Study: CMIX](#1-study-cmix)
+2. [Study: PAQ Family](#2-study-paq-family)
+3. [Study: Asymmetric Numeral Systems (ANS)](#3-study-asymmetric-numeral-systems-ans)
+4. [Study: GPU Compression](#4-study-gpu-compression)
+5. [Study: Grammar-Based Compression](#5-study-grammar-based-compression)
+6. [Architecture Design](#6-architecture-design)
+7. [Goals & Success Criteria](#7-goals--success-criteria)
+8. [Benchmark Plan](#8-benchmark-plan)
+9. [Key Risks & Mitigations](#9-key-risks--mitigations)
+10. [Phase 2 Readiness Checklist](#10-phase-2-readiness-checklist)
+
+---
+
+## 1. Study: CMIX
+
+### What Is CMIX?
+
+CMIX (by Byron Knoll) is the current state-of-the-art in lossless compression ratio. It consistently ranks #1 on benchmarks such as the Hutter Prize. It compresses data one **bit at a time**, using an enormous ensemble of prediction models fed into a context mixer, producing a final probability fed to an arithmetic coder.
+
+### Architecture
+
+```
+Input Bits
+    │
+    ▼
+[Preprocessors] — detect & transform text, executables, images
+    │
+    ▼
+[Model Ensemble] — 2,000+ statistical models running in parallel
+  ├─ Byte-order models
+  ├─ Word models
+  ├─ Sparse context models
+  ├─ Domain-specific models (text, binary, image)
+  └─ Neural network predictors
+    │
+    ▼
+[Context Mixer] — weighted averaging of model outputs
+  └─ SSE (Secondary Symbol Estimation) refinement
+    │
+    ▼
+[Arithmetic Coder] → compressed bitstream
+```
+
+### Key Concepts
+
+| Concept | Description |
+|---|---|
+| **Context Mixing** | Combines outputs from many models via weighted average; weights adapt in real time |
+| **SSE** | A second-stage calibrator that adjusts the mixer's output probability using recent history |
+| **Non-stationarity** | Models decay their counters so they can adapt to changing data statistics |
+| **Bit-level processing** | Operates at the bit level, not byte level — finer grained but sequential |
+
+### CMIX's Fatal Limitations for HyperCore
+
+| Limitation | Impact |
+|---|---|
+| Purely sequential — every bit depends on the previous | Cannot be parallelized at all |
+| 32 GB+ RAM required | Impractical for most real-world workloads |
+| No GPU utilization | Modern GPU compute power is completely wasted |
+| Compresses ~1 MB/min on modern CPUs | Orders of magnitude too slow for practical use |
+| Single global model — no semantic awareness | Natural language mixed with source code → poor prediction for both |
+
+### Lessons for HyperCore
+
+- The **context mixing** principle is powerful and worth preserving — but the mixer must be fast and selective.
+- **SSE** is an effective final calibration stage — we should implement a lightweight analogue.
+- CMIX proves that throwing more models at a problem improves ratios — HyperCore must be smarter about *which* models to evaluate per context (adaptive selection).
+- The **global model** weakness directly motivates HyperCore's **Context Islands** design.
+
+---
+
+## 2. Study: PAQ Family
+
+### What Is PAQ?
+
+PAQ (Matt Mahoney) is the predecessor family to CMIX. It pioneered **context mixing** for lossless compression and consistently tops the Hutter Prize leaderboard alongside CMIX. ZPAQ is its self-describing variant.
+
+### Evolution: PPM → PAQ
+
+**Prediction by Partial Matching (PPM):**
+- Predicts the next symbol using the *n* preceding symbols as context.
+- Falls back to shorter contexts when a pattern hasn't been seen.
+- Selects **one** best-matching context. Major limitation.
+
+**PAQ's Breakthrough:**
+- Instead of selecting one context, PAQ runs **all contexts simultaneously** and mixes their outputs.
+- Uses bit-level processing — more granular and avoids PPM's binary-escape inefficiency.
+- PAQ7+ uses a neural network (a small logistic regressor) as the mixer.
+
+### PAQ Model Taxonomy
+
+```
+PAQ Model Types:
+├─ CharModel      — simple byte-order statistics
+├─ WordModel      — word-boundary-aware contexts
+├─ MatchModel     — long-match LZ-style predictor
+├─ SparseModel    — non-contiguous byte contexts (e.g., skip every 4 bytes)
+├─ RecordModel    — detects fixed-width record structures (CSV, binary tables)
+├─ NestModel      — tracks nesting depth in structured text (XML, JSON, code)
+├─ XMLModel       — tag-aware prediction for XML/HTML
+└─ NNModel        — small neural net predictor (PAQ8+)
+```
+
+### Key Techniques Worth Adopting
+
+| PAQ Technique | HyperCore Adaptation |
+|---|---|
+| Multiple simultaneous models | Adaptive predictor selection — run only the relevant subset |
+| Bit-level logistic mixing | Apply on a per-Context-Island basis |
+| SparseModel for non-contiguous patterns | Include in the GPU phase as a sliding pattern hash |
+| RecordModel for structural detection | Core of the Context Island classifier |
+| NestModel for bracket tracking | Part of the JSON/XML/code Context Island |
+
+### Key Lesson
+
+PAQ proves that a **mixture of specialized models** always outperforms any single model, regardless of how sophisticated that single model is. HyperCore should embrace this, but make the mixture **parallel** and **hardware-aware**.
+
+---
+
+## 3. Study: Asymmetric Numeral Systems (ANS)
+
+### What Is ANS?
+
+ANS (Jarek Duda, 2009) is the family of entropy coders that has replaced arithmetic coding in most modern production compressors (Zstd, Apple LZFSE, CRAM, etc.). It encodes a stream of symbols into a single large integer, advancing the "state" with each symbol according to its probability.
+
+### The Core Idea
+
+In standard binary: `x' = 2x + bit` (appending a bit to x)
+
+In ANS: `x' = f(x, s, p(s))` — encoding symbol `s` with probability `p(s)` advances the state in a way that expends exactly `log2(1/p(s))` bits of information — achieving near-entropy compression.
+
+### rANS vs tANS
+
+| Feature | rANS | tANS |
+|---|---|---|
+| Implementation | Multiply/divide on the hot path | Precomputed finite-state machine lookup table |
+| Speed | Fast, but slower than tANS due to division | Extremely fast — just table lookups + bit shifts |
+| Parallelism | **Better for GPU** — multiple streams interleave cleanly | Harder to parallelize — table state is shared |
+| Precision | Arbitrary precision via integer scaling | Fixed table size (typically 2^12 states) |
+| Used by | DietGPU, custom research codecs | Zstd, LZFSE, CRAM |
+
+> **HyperCore Decision:** Use **rANS** for the GPU pipeline (interleaved streams are naturally parallel), **tANS** for the CPU fallback path (cache-friendly, no division).
+
+### GPU rANS — How Parallelism Works
+
+Standard rANS is sequential: each symbol's output depends on the previous state. To parallelize:
+
+1. **Multi-stream rANS:** Run *N* independent rANS streams on *N* blocks simultaneously. Each stream is independent.
+2. **Interleaved rANS:** Even within one block, interleave *k* streams (k=4, 8) — encoder alternates between them. Decoder does the same in reverse.
+3. **Decoding parallelism:** rANS decodes in reverse, which is embarrassingly parallel given independent streams.
+
+This is the same strategy used by DietGPU (250–600 GB/s on A100).
+
+### ANS Mathematical Properties We Exploit
+
+- **Renormalization:** When state `x` grows too large, emit bits to output and rescale — these bit-emitting intervals can be precomputed, enabling GPU branch-free execution.
+- **Precise probability tables:** We can allocate symbol frequencies to quantized probabilities in [0, M] where M = 2^k, enabling fast integer arithmetic on GPU.
+
+---
+
+## 4. Study: GPU Compression
+
+### State of the Art (2026)
+
+| Library | Throughput | Key Approach |
+|---|---|---|
+| **NVIDIA nvCOMP 4.2+** | Up to 600 GB/s | Hardware decompression engine (Blackwell), LZ4/Zstd/gANS |
+| **DietGPU** | 250–600 GB/s | Pure rANS on CUDA, generalized ANS for HPC/ML |
+| **NCCLZ** | Varies | Compression embedded in GPU collective communication |
+
+### What GPUs Are Good At (for HyperCore)
+
+```
+Massively parallel, data-independent tasks:
+├─ UTF-8 validation           — O(n) per byte, all bytes independent
+├─ Character classification   — lookup per byte
+├─ Rolling hash computation   — sliding window Rabin fingerprint
+├─ N-gram counting            — atomic histograms
+├─ Phrase frequency analysis  — parallel prefix sum + counting sort
+├─ Dictionary candidate gen   — top-K selection from frequency tables
+├─ Entropy estimation         — parallel per-symbol log2 computation
+└─ rANS encoding              — multi-stream, one stream per CUDA thread block
+```
+
+### What GPUs Are Bad At (these stay on CPU)
+
+```
+Sequential, adaptive, synchronization-heavy tasks:
+├─ Context mixing weights update     — depends on every prior bit
+├─ Grammar rule optimization         — graph-based, hard to parallelize
+├─ Archive assembly                  — sequential byte stream construction
+├─ Adaptive probability decisions    — control flow heavy
+└─ Dictionary selection logic        — requires semantic reasoning
+```
+
+### CUDA Design Principles for HyperCore
+
+1. **Stream-level parallelism:** Use CUDA Streams to overlap GPU execution with CPU work (pipelining).
+2. **Coalesced memory access:** Structure data as Structure-of-Arrays (SoA), not Array-of-Structures (AoS).
+3. **Warp efficiency:** Group similar work (same region type) into the same warp to minimize divergence.
+4. **Thrust + CUB:** Use Thrust for high-level parallel algorithms (sort, reduce, scan). Use CUB for device-wide and block-wide primitives.
+5. **cuCollections:** GPU hash maps (cuco::static_map) for building frequency tables on-device.
+6. **Nsight profiling:** Profile every kernel with Nsight Compute before optimizing — never guess.
+
+### Key Insight: The GPU is a Preprocessor, Not the Compressor
+
+Modern GPU compression libraries (nvCOMP, DietGPU) focus on *encoding already-modeled data* at high throughput. HyperCore's innovation is using the GPU **earlier** — to do semantic analysis, pattern mining, and dictionary building **before** entropy coding begins. This is the unexplored territory.
+
+---
+
+## 5. Study: Grammar-Based Compression
+
+### What Is Grammar Compression?
+
+Grammar compression represents an input string as a **Straight-Line Program (SLP)** — a context-free grammar that generates exactly one string: the input. Repeated patterns become reusable non-terminal symbols (grammar rules).
+
+**Example:**
+```
+Input: "abcabc"
+Grammar:
+  S → AA
+  A → "abc"
+```
+The string "abcabc" is now stored as 2 rules rather than 6 characters.
+
+### Key Algorithms
+
+#### Sequitur (Online)
+
+- Processes text left-to-right, incrementally.
+- Maintains two invariants:
+  1. **Digram uniqueness**: No adjacent symbol pair appears twice in the grammar.
+  2. **Rule utility**: Every rule is referenced at least twice.
+- Good for streaming/real-time.
+- Slightly lower compression than Re-Pair.
+
+#### Re-Pair (Offline, Greedy)
+
+- Reads entire input first.
+- Repeatedly replaces the **most frequent** adjacent pair with a new symbol.
+- Continues until no pair appears more than once.
+- Generally achieves better compression ratios than Sequitur.
+- High memory overhead (4-8× input size).
+- **Parallelizable:** Frequency counting is a parallel histogram problem — GPU-friendly.
+
+### Applying to HyperCore
+
+| Pattern Class | Grammar Rule Type | Examples |
+|---|---|---|
+| Code constructs | Template rules | `for (int i = 0; i < n; i++)` |
+| JSON structure | Structural rules | `{"key": VALUE}` |
+| XML elements | Tag rules | `<tag attr="val">...</tag>` |
+| Log templates | Template rules | `[YYYY-MM-DD HH:MM:SS] [LEVEL] MESSAGE` |
+| Markdown headers | Pattern rules | `## Section Title` |
+| CSV rows | Record rules | `field1,field2,field3\n` |
+
+> **HyperCore's Grammar System** does not seek the smallest grammar (NP-hard). It uses Re-Pair as the primary algorithm (for better ratios), with Sequitur as a streaming fallback for the real-time path.
+
+### Grammar + Context Islands Synergy
+
+The grammar system works differently **per Context Island**:
+
+- **Natural language island:** Focus on word-level n-grams and phrase repetition.
+- **Source code island:** Focus on syntactic construct templates.
+- **JSON/XML island:** Focus on structural patterns and key-value schemata.
+- **Log island:** Focus on timestamp and level prefix templates.
+
+This per-island grammar specialization is one of HyperCore's most powerful differentiators.
+
+---
+
+## 6. Architecture Design
+
+### High-Level Pipeline
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         HyperCore Pipeline                      │
+│                                                                 │
+│  INPUT FILE                                                     │
+│     │                                                           │
+│     ▼                                                           │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  STAGE 0: FILE ANALYSIS (CPU)                            │   │
+│  │  Encoding detection, file type, block partitioning       │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│     │                                                           │
+│     ▼  [transfer to GPU]                                        │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  STAGE 1: GPU PREPROCESSING                              │   │
+│  │  UTF-8 validation → tokenization → char classification   │   │
+│  │  → region tagging (Context Island labels)                │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│     │                              │                            │
+│     │  [GPU, per-island]           │  [CPU, concurrent]         │
+│     ▼                              ▼                            │
+│  ┌──────────────────┐   ┌───────────────────────────────────┐   │
+│  │ STAGE 2: PATTERN │   │ STAGE 2B: CONTEXT ISLAND SETUP    │   │
+│  │ MINING (GPU)     │   │ Assign predictor sets per island  │   │
+│  │ Rolling hashes   │   │ Initialize per-island models      │   │
+│  │ N-gram counts    │   │ Prepare grammar builders          │   │
+│  │ Phrase mining    │   └───────────────────────────────────┘   │
+│  │ Dict candidates  │                                           │
+│  └──────────────────┘                                           │
+│     │                                                           │
+│     ▼  [results back to CPU]                                    │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  STAGE 3: DICTIONARY & GRAMMAR OPTIMIZATION (CPU)        │   │
+│  │  Prune candidates → finalize 3-tier dictionary           │   │
+│  │  Run Re-Pair grammar compression per island              │   │
+│  │  Build probability tables for entropy coder              │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│     │                                                           │
+│     ▼                                                           │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  STAGE 4: PREDICTION ENGINE (CPU + optional GPU)         │   │
+│  │  Adaptive model selection per context                    │   │
+│  │  Context mixer (weighted logistic)                       │   │
+│  │  SSE calibration                                         │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│     │                                                           │
+│     ▼  [GPU]                                                    │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  STAGE 5: ENTROPY CODING (GPU + CPU)                     │   │
+│  │  Multi-stream rANS on GPU (one stream per block)         │   │
+│  │  tANS on CPU for metadata and headers                    │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│     │                                                           │
+│     ▼                                                           │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  STAGE 6: ARCHIVE ASSEMBLY (CPU)                         │   │
+│  │  Write .htx format: header + block index + blocks +      │   │
+│  │  dictionaries + grammar tables + metadata + checksums    │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│     │                                                           │
+│     ▼                                                           │
+│  OUTPUT: filename.htx                                           │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Context Islands — Detailed Design
+
+#### Detection Heuristics
+
+| Island Type | Detection Signal |
+|---|---|
+| **Natural Language** | High alpha ratio, sentence boundaries, common word frequency |
+| **Source Code** | Keywords (`if`, `for`, `def`, `class`, etc.), brace density, indentation regularity |
+| **JSON** | `{`, `"key":`, balanced brackets, UTF-8 only |
+| **XML/HTML** | `<tag>`, balanced tags, attribute patterns |
+| **CSV** | Regular delimiter count per line, quoted fields |
+| **Markdown** | `#` headers, `*`/`_` emphasis, `` ` `` code fences |
+| **Log** | Timestamp prefix, level labels, repeated template prefix |
+| **Binary** | High non-printable ratio — falls back to a general binary mode |
+
+#### Predictor Assignment Per Island
+
+| Island | Active Predictors |
+|---|---|
+| Natural Language | Word model, phrase model, char model |
+| Source Code | Grammar model, structural model, char model |
+| JSON | Structural model, key model, value model |
+| XML | Tag model, attribute model, text model |
+| CSV | Record model, field model |
+| Log | Template model, timestamp model |
+| Markdown | Structure model, word model |
+
+### Three-Tier Dictionary System
+
+```
+Tier 1: Global Dictionary
+  ├─ Built from entire corpus (pre-trained or corpus-scan)
+  ├─ Contains universal high-frequency phrases: "function", "return", "the", etc.
+  └─ Size: ~64KB–256KB
+
+Tier 2: Document Dictionary
+  ├─ Built per input file
+  ├─ Contains document-specific frequent patterns
+  └─ Size: ~8KB–64KB
+
+Tier 3: Block Dictionary
+  ├─ Built per 64KB–256KB block
+  ├─ Hyper-local frequent phrases
+  └─ Size: ~1KB–8KB
+```
+
+Encoder selects the **cheapest representation** for each token across all three tiers.
+
+### Parallel CPU–GPU Pipeline (Concurrency Model)
+
+```
+Time →
+CPU:  [Analyze Block N+1] [Optimize Dict/Grammar N] [Mix Probabilities N-1] [Archive N-2]
+GPU:  [Preprocess Block N] [Pattern Mine N]          [rANS Encode N-1]
+```
+
+- Uses CUDA Streams and CPU thread pools to maintain full overlap.
+- CPU and GPU are never both idle at the same time.
+
+---
+
+## 7. Goals & Success Criteria
+
+### Primary Goals
+
+| Goal | Target Metric |
+|---|---|
+| Compression ratio on text corpora | Within 5–10% of CMIX on Canterbury/Silesia text files |
+| Compression speed | ≥ 10× faster than CMIX at similar ratio settings |
+| Decompression speed | ≥ 100 MB/s (at minimum), targeting 500 MB/s+ |
+| Memory usage | ≤ 4 GB RAM (vs CMIX's 32 GB+) |
+| GPU utilization | ≥ 70% sustained during GPU phases |
+| CPU utilization | ≥ 80% average across all cores during CPU phases |
+
+### Secondary Goals
+
+| Goal | Target |
+|---|---|
+| Beat XZ -9 on pure text compression ratio | Yes |
+| Approach Brotli quality=11 ratio on web content | Yes |
+| Beat Zstd -22 (ultra) on source code corpora | Yes |
+| Lossless round-trip verified via BLAKE3 | 100% required |
+| `.htx` format: random-access decompression | Phase 13 |
+| Streaming compression | Phase 13 |
+
+### Non-Goals (Out of Scope)
+
+- Binary file compression (images, video, executables) — text-only
+- Lossy compression of any kind
+- Real-time streaming in Phase 1–7
+
+---
+
+## 8. Benchmark Plan
+
+### Corpora
+
+| Corpus | Description | Why |
+|---|---|---|
+| **Canterbury Corpus** | Classic text + code mix | Standard baseline for all compressors |
+| **Calgary Corpus** | Older mix, historical baseline | Historical comparison |
+| **Silesia Corpus** | Modern mix: code, XML, HTML, PDF text, DB | Realistic modern workloads |
+| **Large GitHub repos** | C++/Python source code | HyperCore's primary target domain |
+| **Wikipedia dump** | Large natural language corpus | Natural language prediction quality |
+| **JSON datasets** | Synthetic + real API responses | JSON Context Island validation |
+| **Log datasets** | Apache/nginx/syslog | Log Context Island validation |
+
+### Competitor Baselines
+
+| Compressor | Mode Tested | Why |
+|---|---|---|
+| **Zstd** | -3 (default), -19, --ultra -22 | Modern fast compressor |
+| **Brotli** | q=6, q=11 | Web standard |
+| **XZ** | -6, -9 | High-ratio archiver |
+| **7-Zip** | -mx=5, -mx=9 | Common archiver |
+| **PAQ8pxd** | default | Near-CMIX performance |
+| **CMIX** | default | Gold standard ratio |
+
+### Metrics Captured
+
+For each (corpus file, compressor, mode) triple:
+
+- Compressed size (bytes)
+- Compression ratio (= original / compressed)
+- Compression time (wall clock, ms)
+- Decompression time (wall clock, ms)
+- Peak RSS memory (MB)
+- Throughput (MB/s) both directions
+- Bits per byte (bpb = compressed_bits / original_bytes)
+
+### Benchmark Tooling
+
+- **Google Benchmark** — micro-benchmarks for individual pipeline stages
+- **Tracy Profiler** — frame-based profiler, good for pipelined workloads
+- **Nsight Compute** — per-kernel GPU roofline analysis
+- **Nsight Systems** — system-wide CPU+GPU timeline
+- **Intel VTune** — CPU cache and instruction analysis
+- **perf** — Linux-native profiling (or WPA on Windows)
+
+### Benchmark Reporting Format
+
+```
+File: enwik8 (100 MB Wikipedia)
+──────────────────────────────────────────────────────
+Algorithm       │ Ratio  │ C Speed  │ D Speed  │ RAM
+────────────────┼────────┼──────────┼──────────┼──────
+HyperCore v0.1  │ 5.21:1 │ 82 MB/s  │ 512 MB/s │ 1.8 GB
+CMIX v21        │ 6.03:1 │ 0.02MB/s │ 0.02MB/s │ 32 GB
+Zstd -22        │ 3.98:1 │ 4.1 MB/s │ 1200MB/s │ 512 MB
+XZ -9           │ 4.87:1 │ 1.2 MB/s │ 78 MB/s  │ 686 MB
+──────────────────────────────────────────────────────
+```
+
+---
+
+## 9. Key Risks & Mitigations
+
+| Risk | Likelihood | Impact | Mitigation |
+|---|---|---|---|
+| GPU-CPU transfer bottleneck dominates latency | High | High | Profile early; use pinned (page-locked) memory; minimize round trips via larger batch sizes |
+| Grammar compression memory blows out | Medium | High | Cap grammar table sizes; use streaming Re-Pair variant; shard large files |
+| Context Island misclassification hurts ratio | Medium | Medium | Fallback: if island-specific model performs poorly, blend in a general model with low weight |
+| rANS probability table overflow (quantization error) | Low | High | Use 12-bit tables (M=4096) for balance; validate round-trip on every build |
+| CMIX-class ratio proves unreachable at practical speed | High | Medium | Reframe target: not to match CMIX, but to define a new Pareto front on the ratio/speed tradeoff |
+| CUDA code portability (AMD GPUs) | Low | Low | Abstract GPU backend behind an interface; HIP port is a Phase 13+ consideration |
+
+---
+
+## 10. Phase 2 Readiness Checklist
+
+Before moving to Phase 2 (Foundation), the following must be confirmed:
+
+- [x] **CMIX studied** — limitations, context mixing mechanism, SSE understood
+- [x] **PAQ studied** — model taxonomy, context mixing variants, lessons documented
+- [x] **ANS studied** — rANS vs tANS, GPU parallelism strategy, implementation plan
+- [x] **GPU compression studied** — nvCOMP, DietGPU, CUDA design principles documented
+- [x] **Grammar compression studied** — Sequitur vs Re-Pair, application to HyperCore defined
+- [x] **Architecture designed** — all 6 pipeline stages, Context Islands, 3-tier dictionary
+- [x] **Goals defined** — primary metrics, non-goals, success criteria
+- [x] **Benchmark plan created** — corpora, competitors, metrics, tooling
+
+### Phase 2 Entry Requirements
+
+- [ ] Repository created on GitHub with MIT license
+- [ ] CMakeLists.txt scaffolded (C++23, CUDA, OpenMP, TBB)
+- [ ] CI pipeline configured (GitHub Actions or equivalent)
+- [ ] Unit test framework integrated (GoogleTest)
+- [ ] Logging framework selected (spdlog)
+- [ ] Memory manager interface designed
+- [ ] Thread pool implementation chosen (TBB or custom)
+
+---
+
+## Appendix A: Terminology Glossary
+
+| Term | Definition |
+|---|---|
+| **bpb** | Bits per byte — primary compression quality metric. Lower is better. |
+| **Context Island** | A contiguous region of text with a uniform semantic type (NL, code, JSON, etc.) |
+| **rANS** | Range ANS — arithmetic ANS variant; preferred for GPU due to parallelizability |
+| **tANS** | Tabled ANS — lookup-table ANS variant; fastest on CPU |
+| **SLP** | Straight-Line Program — the formal model underlying grammar compression |
+| **SSE** | Secondary Symbol Estimation — probability refinement layer in CMIX/PAQ |
+| **Re-Pair** | Recursive Pairing — offline grammar compression algorithm used in HyperCore |
+| **bpb target** | HyperCore v1.0 aspirational target: < 1.8 bpb on enwik8 |
+| **Context Mixing** | Combining multiple model predictions via weighted averaging |
+| **.htx** | HyperCore's proprietary lossless archive format |
+
+## Appendix B: Key References
+
+| Topic | Reference |
+|---|---|
+| CMIX | https://github.com/byronknoll/cmix |
+| PAQ/ZPAQ | http://mattmahoney.net/dc/ |
+| ANS original paper | Jarek Duda, "Asymmetric numeral systems" (arXiv:0902.0271) |
+| rANS on GPU | DietGPU — https://github.com/facebookresearch/dietgpu |
+| nvCOMP | https://developer.nvidia.com/nvcomp |
+| Re-Pair algorithm | Larsson & Moffat, "Offline Dictionary-Based Compression" |
+| Sequitur | Craig Nevill-Manning, "Inferring Sequential Structure" (PhD thesis) |
+| Hutter Prize | http://prize.hutter1.net/ |
+| Canterbury Corpus | https://corpus.canterbury.ac.nz/ |
+| Silesia Corpus | http://sun.aei.polsl.pl/~sdeor/index.php?page=silesia |
