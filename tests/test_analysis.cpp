@@ -10,7 +10,7 @@ using namespace hypercore::analysis;
 
 TEST(TextAnalyzer, TokenizeWordsAndSpaces) {
     const std::string text = "Hello world";
-    Block b = Block::from(reinterpret_cast<const u8*>(text.data()), text.size());
+    Block b = Block::from(reinterpret_cast<const u8*>(text.data()), static_cast<u32>(text.size()));
     
     TextAnalyzer analyzer;
     AnalysisResult res = analyzer.analyze(b.view());
@@ -28,7 +28,7 @@ TEST(TextAnalyzer, TokenizeWordsAndSpaces) {
 
 TEST(TextAnalyzer, TokenizeMixed) {
     const std::string text = "Count: 42!";
-    Block b = Block::from(reinterpret_cast<const u8*>(text.data()), text.size());
+    Block b = Block::from(reinterpret_cast<const u8*>(text.data()), static_cast<u32>(text.size()));
     
     TextAnalyzer analyzer;
     AnalysisResult res = analyzer.analyze(b.view());
@@ -45,7 +45,7 @@ TEST(TextAnalyzer, TokenizeMixed) {
 
 TEST(TextAnalyzer, DetectNaturalLanguage) {
     const std::string text = "This is a simple sentence with normal words.";
-    Block b = Block::from(reinterpret_cast<const u8*>(text.data()), text.size());
+    Block b = Block::from(reinterpret_cast<const u8*>(text.data()), static_cast<u32>(text.size()));
     
     TextAnalyzer analyzer;
     AnalysisResult res = analyzer.analyze(b.view());
@@ -56,7 +56,7 @@ TEST(TextAnalyzer, DetectNaturalLanguage) {
 
 TEST(TextAnalyzer, DetectJson) {
     const std::string text = "{ \"key\": [1, 2, 3] }";
-    Block b = Block::from(reinterpret_cast<const u8*>(text.data()), text.size());
+    Block b = Block::from(reinterpret_cast<const u8*>(text.data()), static_cast<u32>(text.size()));
     
     TextAnalyzer analyzer;
     AnalysisResult res = analyzer.analyze(b.view());
@@ -67,7 +67,7 @@ TEST(TextAnalyzer, DetectJson) {
 
 TEST(TextAnalyzer, DetectCode) {
     const std::string text = "int main() { return 0; }";
-    Block b = Block::from(reinterpret_cast<const u8*>(text.data()), text.size());
+    Block b = Block::from(reinterpret_cast<const u8*>(text.data()), static_cast<u32>(text.size()));
     
     TextAnalyzer analyzer;
     AnalysisResult res = analyzer.analyze(b.view());

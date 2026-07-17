@@ -214,7 +214,7 @@ int main(int argc, char** argv) {
     // Dispatch
     if (*compress_cmd) {
         return cmd_compress(compress_input, compress_output,
-                             compress_level, no_gpu, no_grammar);
+                             compress_level, no_gpu, no_grammar, analyze_only);
     }
     if (*decompress_cmd) {
         return cmd_decompress(decompress_input, decompress_output);
