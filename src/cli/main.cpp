@@ -28,6 +28,7 @@ namespace fs = std::filesystem;
 using namespace hypercore;
 
 #include <hypercore/analysis/TextAnalyzer.hpp>
+#include <hypercore/analysis/FileAnalyzer.hpp>
 #include <fstream>
 #include <vector>
 
@@ -84,25 +85,39 @@ static int cmd_compress(const std::string& input,
     spdlog::info("  Input    : {} ({})", input, format_bytes(input_size));
 
     if (analyze_only) {
-        spdlog::info("Running Phase 3 Analysis on first block...");
+        spdlog::info("Running Phase 3 File Analysis...");
         std::ifstream file(input, std::ios::binary);
         std::vector<u8> buffer(std::min<u64>(input_size, 256 * 1024));
         file.read(reinterpret_cast<char*>(buffer.data()), buffer.size());
         
-        Block b = Block::from(buffer.data(), static_cast<u32>(buffer.size()));
-        analysis::TextAnalyzer analyzer;
-        analysis::AnalysisResult res = analyzer.analyze(b.view());
+        analysis::FileAnalyzer file_analyzer;
+        auto meta = file_analyzer.analyze_buffer(ByteSpan(buffer.data(), buffer.size()));
         
-        spdlog::info("Analysis Results:");
-        spdlog::info("  Tokens        : {}", res.tokens.size());
-        spdlog::info("  Alpha Ratio   : {:.2f}", res.alpha_ratio);
-        spdlog::info("  Digit Ratio   : {:.2f}", res.digit_ratio);
-        spdlog::info("  WS Ratio      : {:.2f}", res.ws_ratio);
-        spdlog::info("  Punct Ratio   : {:.2f}", res.punct_ratio);
-        spdlog::info("  Bracket Dens. : {:.2f}", res.bracket_density);
-        
-        if (!res.islands.empty()) {
-            spdlog::info("  Primary Island: {}", to_string(res.islands[0].type));
+        spdlog::info("File Properties:");
+        spdlog::info("  Total Bytes   : {}", meta.total_bytes);
+        spdlog::info("  Is Binary     : {}", meta.is_binary ? "Yes" : "No");
+        spdlog::info("  Is Valid UTF-8: {}", meta.is_valid_utf8 ? "Yes" : "No");
+        if (meta.global_island_hint != IslandType::Unknown) {
+            spdlog::info("  Global Hint   : {}", to_string(meta.global_island_hint));
+        }
+
+        if (!meta.is_binary) {
+            spdlog::info("Running Text Analysis on first block...");
+            Block b = Block::from(buffer.data(), static_cast<u32>(buffer.size()));
+            analysis::TextAnalyzer text_analyzer;
+            analysis::AnalysisResult res = text_analyzer.analyze(b.view());
+            
+            spdlog::info("Analysis Results:");
+            spdlog::info("  Tokens        : {}", res.tokens.size());
+            spdlog::info("  Alpha Ratio   : {:.2f}", res.alpha_ratio);
+            spdlog::info("  Digit Ratio   : {:.2f}", res.digit_ratio);
+            spdlog::info("  WS Ratio      : {:.2f}", res.ws_ratio);
+            spdlog::info("  Punct Ratio   : {:.2f}", res.punct_ratio);
+            spdlog::info("  Bracket Dens. : {:.2f}", res.bracket_density);
+            
+            if (!res.islands.empty()) {
+                spdlog::info("  Primary Island: {}", to_string(res.islands[0].type));
+            }
         }
         return EXIT_SUCCESS;
     }
