@@ -92,7 +92,7 @@ static int cmd_compress(const std::string& input,
     const auto input_size = fs::file_size(input);
     spdlog::info("  Input    : {} ({})", input, format_bytes(input_size));
 
-    if (analyze_only) {
+    {
         spdlog::info("Running Phase 3 File Analysis...");
         std::ifstream file(input, std::ios::binary);
         std::vector<u8> buffer(std::min<u64>(input_size, 256 * 1024));
