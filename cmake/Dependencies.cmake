@@ -41,6 +41,17 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(CLI11)
 
+# ── BLAKE3 (cryptographic hashing) ───────────────────────────────────────────
+FetchContent_Declare(
+    blake3
+    GIT_REPOSITORY  https://github.com/BLAKE3-team/BLAKE3.git
+    GIT_TAG         1.5.0
+    GIT_SHALLOW     TRUE
+    SOURCE_SUBDIR   c
+)
+set(BLAKE3_NO_TESTING ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(blake3)
+
 # ── Google Benchmark (micro-benchmarks) — optional ───────────────────────────
 if(HYPERCORE_BUILD_TOOLS)
     FetchContent_Declare(
