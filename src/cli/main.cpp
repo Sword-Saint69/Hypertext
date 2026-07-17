@@ -33,6 +33,8 @@ using namespace hypercore;
 #include <hypercore/analysis/GrammarBuilder.hpp>
 #include <hypercore/core/ContextMixer.hpp>
 #include <hypercore/core/CharacterPredictor.hpp>
+#include <hypercore/core/RansEncoder.hpp>
+#include <hypercore/core/BitWriter.hpp>
 #include <cmath>
 #include <fstream>
 #include <vector>
@@ -163,6 +165,11 @@ static int cmd_compress(const std::string& input,
             
             f64 total_entropy = 0.0;
             const u8* data = b.data();
+
+            // Set up actual physical rANS encoding
+            BitWriter bit_writer;
+            RansEncoder encoder(bit_writer);
+
             for (u32 i = 0; i < b.size(); ++i) {
                 p_ctx.position = i;
                 p_ctx.history = ByteSpan(data, i); // Up to current byte
@@ -175,18 +182,30 @@ static int cmd_compress(const std::string& input,
                 if (p > 0.0f) {
                     total_entropy += -std::log2(p);
                 } else {
-                    total_entropy += 32.0; // penalty for zero probability (should not happen with smoothing)
+                    total_entropy += 32.0; // penalty for zero probability
                 }
                 
+                // Quantize and encode!
+                QuantizedDistribution q_dist = QuantizedDistribution::from(dist);
+                encoder.encode_symbol(actual_byte, q_dist);
+
                 // Update the model with what actually happened
                 mixer.update(p_ctx, actual_byte);
             }
             
+            encoder.flush();
+
             f64 bpb = total_entropy / b.size();
             spdlog::info("Prediction Results:");
             spdlog::info("  Total Entropy   : {:.2f} bits", total_entropy);
             spdlog::info("  Bits Per Byte   : {:.3f} bpb", bpb);
             spdlog::info("  Estimated Ratio : {:.2f}x", 8.0 / bpb);
+
+            spdlog::info("Entropy Coding (rANS) Results:");
+            spdlog::info("  Encoded Bytes   : {}", bit_writer.get_buffer().size());
+            f64 actual_bpb = static_cast<f64>(bit_writer.get_total_bits()) / b.size();
+            spdlog::info("  Actual bpb      : {:.3f}", actual_bpb);
+            spdlog::info("  Actual Ratio    : {:.2f}x", b.size() / static_cast<f64>(bit_writer.get_buffer().size()));
         }
         return EXIT_SUCCESS;
     }
