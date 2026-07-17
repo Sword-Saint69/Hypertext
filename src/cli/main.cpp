@@ -29,6 +29,7 @@ using namespace hypercore;
 
 #include <hypercore/analysis/TextAnalyzer.hpp>
 #include <hypercore/analysis/FileAnalyzer.hpp>
+#include <hypercore/analysis/PatternMiner.hpp>
 #include <fstream>
 #include <vector>
 
@@ -117,6 +118,27 @@ static int cmd_compress(const std::string& input,
             
             if (!res.islands.empty()) {
                 spdlog::info("  Primary Island: {}", to_string(res.islands[0].type));
+            }
+
+            spdlog::info("Running Pattern Mining...");
+            analysis::PatternMiner miner;
+            if (meta.global_island_hint == IslandType::Binary) {
+                miner.mine_phrases(b.view().span(), 8);
+            } else {
+                miner.mine_ngrams(b.view().span(), res.tokens);
+            }
+            
+            auto top_candidates = miner.extract_top_candidates(5);
+            spdlog::info("Top 5 Dictionary Candidates:");
+            for (const auto& c : top_candidates) {
+                std::string display_seq = c.sequence;
+                // Replace newlines with spaces for clean printing
+                std::replace(display_seq.begin(), display_seq.end(), '\n', ' ');
+                std::replace(display_seq.begin(), display_seq.end(), '\r', ' ');
+                if (display_seq.length() > 40) {
+                    display_seq = display_seq.substr(0, 37) + "...";
+                }
+                spdlog::info("  [{}] (freq: {}, utility: {})", display_seq, c.frequency, c.utility_score);
             }
         }
         return EXIT_SUCCESS;
