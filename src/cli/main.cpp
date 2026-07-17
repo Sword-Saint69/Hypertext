@@ -39,6 +39,7 @@ using namespace hypercore;
 #include <cmath>
 #include <fstream>
 #include <vector>
+#include <blake3.h>
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Logger setup
@@ -231,7 +232,12 @@ static int cmd_compress(const std::string& input,
                 ArchiveHeader a_head;
                 a_head.num_blocks = 1;
                 a_head.original_size = meta.total_bytes;
-                // Leave BLAKE3 zeroed out as planned.
+                
+                // Compute BLAKE3 hash of the original uncompressed file buffer
+                blake3_hasher hasher;
+                blake3_hasher_init(&hasher);
+                blake3_hasher_update(&hasher, buffer.data(), buffer.size());
+                blake3_hasher_finalize(&hasher, a_head.blake3, sizeof(a_head.blake3));
                 
                 std::vector<BlockEntry> b_index = { b_entry };
                 if (!archive.finalize(a_head, b_index).has_value()) {

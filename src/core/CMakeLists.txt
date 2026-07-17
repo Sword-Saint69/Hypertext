@@ -14,6 +14,7 @@ target_include_directories(hypercore_core
 
 target_link_libraries(hypercore_core
     PUBLIC  hypercore_warnings
+            blake3
     PRIVATE hypercore_release_flags
             spdlog::spdlog
 )

@@ -9,6 +9,7 @@ add_executable(hypercore_tests
     test_prediction.cpp
     test_entropy.cpp
     test_archive.cpp
+    test_blake3.cpp
 )
 
 target_link_libraries(hypercore_tests
