@@ -51,6 +51,8 @@ FetchContent_Declare(
 )
 set(BLAKE3_NO_TESTING ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(blake3)
+# BLAKE3's CMakeLists doesn't set BUILD_INTERFACE for includes
+target_include_directories(blake3 PUBLIC $<BUILD_INTERFACE:${blake3_SOURCE_DIR}/c>)
 
 # ── Google Benchmark (micro-benchmarks) — optional ───────────────────────────
 if(HYPERCORE_BUILD_TOOLS)
