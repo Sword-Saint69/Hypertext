@@ -8,6 +8,7 @@
 #include <hypercore/analysis/Token.hpp>
 #include <hypercore/analysis/TextAnalyzer.hpp>
 #include <string_view>
+#include <deque>
 #include <vector>
 #include <string>
 
@@ -63,7 +64,7 @@ private:
 
     // We use a simple hash map for the CPU prototype.
     // In Phase 8, this becomes a GPU-side hash table (cuCollections).
-    std::vector<HashCount> m_candidates;
+    std::deque<HashCount> m_candidates;
     
     // Internal helper to insert or update a sequence
     void record_sequence(std::string_view seq);
