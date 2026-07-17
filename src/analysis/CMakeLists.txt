@@ -1,5 +1,6 @@
 add_library(hypercore_analysis STATIC
     TextAnalyzer.cpp
+    FileAnalyzer.cpp
 )
 
 target_include_directories(hypercore_analysis
