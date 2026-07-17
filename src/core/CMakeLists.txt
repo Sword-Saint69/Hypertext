@@ -24,3 +24,18 @@ set_target_properties(hypercore_core PROPERTIES
     CXX_STANDARD_REQUIRED ON
     CXX_EXTENSIONS        OFF
 )
+
+include(CheckCXXCompilerFlag)
+if(MSVC)
+    check_cxx_compiler_flag("/arch:AVX2" HAS_AVX2)
+    if(HAS_AVX2)
+        target_compile_options(hypercore_core PRIVATE "/arch:AVX2")
+        target_compile_definitions(hypercore_core PUBLIC HYPERCORE_HAS_AVX2)
+    endif()
+else()
+    check_cxx_compiler_flag("-mavx2" HAS_AVX2)
+    if(HAS_AVX2)
+        target_compile_options(hypercore_core PRIVATE "-mavx2")
+        target_compile_definitions(hypercore_core PUBLIC HYPERCORE_HAS_AVX2)
+    endif()
+endif()
