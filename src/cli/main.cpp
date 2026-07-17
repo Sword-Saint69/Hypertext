@@ -35,6 +35,7 @@ using namespace hypercore;
 #include <hypercore/core/CharacterPredictor.hpp>
 #include <hypercore/core/RansEncoder.hpp>
 #include <hypercore/core/BitWriter.hpp>
+#include <hypercore/core/ArchiveWriter.hpp>
 #include <cmath>
 #include <fstream>
 #include <vector>
@@ -206,6 +207,34 @@ static int cmd_compress(const std::string& input,
             f64 actual_bpb = static_cast<f64>(bit_writer.get_total_bits()) / b.size();
             spdlog::info("  Actual bpb      : {:.3f}", actual_bpb);
             spdlog::info("  Actual Ratio    : {:.2f}x", b.size() / static_cast<f64>(bit_writer.get_buffer().size()));
+
+            if (!analyze_only) {
+                spdlog::info("Running Phase 8 Archive Assembly...");
+                ArchiveWriter archive;
+                if (!archive.open(output_path).is_ok()) {
+                    spdlog::error("Failed to open output file: {}", output_path);
+                    return EXIT_FAILURE;
+                }
+
+                BlockEntry b_entry;
+                b_entry.original_size = b.size();
+                b_entry.compressed_size = bit_writer.get_buffer().size();
+                b_entry.dominant_island = static_cast<u8>(meta.global_island_hint);
+                
+                // Currently writing block data
+                archive.write_block(b_entry, ByteSpan(bit_writer.get_buffer().data(), bit_writer.get_buffer().size()));
+
+                // For now, no dictionary/grammar sections written as bytes, we will do that in later phases.
+                ArchiveHeader a_head;
+                a_head.num_blocks = 1;
+                a_head.original_size = meta.total_bytes;
+                // Leave BLAKE3 zeroed out as planned.
+                
+                std::vector<BlockEntry> b_index = { b_entry };
+                archive.finalize(a_head, b_index);
+
+                spdlog::info("Archive assembled successfully at {}", output_path);
+            }
         }
         return EXIT_SUCCESS;
     }
