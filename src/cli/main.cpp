@@ -74,13 +74,12 @@ static std::string format_bytes(u64 bytes) {
 // Stub operations (replaced by real compressor in Phase 7)
 // ─────────────────────────────────────────────────────────────────────────────
 
-static int cmd_compress(const std::string& input,
-                         const std::string& output,
+static int cmd_compress(const std::string& input, const std::string& output,
                          int level,
                          bool no_gpu,
                          bool no_grammar,
                          bool analyze_only) {
-    spdlog::info("Compressing: {} → {}", input, output);
+    spdlog::info("Compressing: {} -> {}", input, output);
     spdlog::info("  Level    : {}", level);
     spdlog::info("  GPU      : {}", !no_gpu ? "enabled" : "disabled");
     spdlog::info("  Grammar  : {}", !no_grammar ? "enabled" : "disabled");
@@ -93,168 +92,129 @@ static int cmd_compress(const std::string& input,
     const auto input_size = fs::file_size(input);
     spdlog::info("  Input    : {} ({})", input, format_bytes(input_size));
 
-    {
-        spdlog::info("Running Phase 3 File Analysis...");
+    std::vector<u8> buffer;
+    if (input_size > 0) {
+        buffer.resize(input_size);
         std::ifstream file(input, std::ios::binary);
-        std::vector<u8> buffer(std::min<u64>(input_size, 256 * 1024));
         file.read(reinterpret_cast<char*>(buffer.data()), buffer.size());
-        
-        analysis::FileAnalyzer file_analyzer;
-        auto meta = file_analyzer.analyze_buffer(ByteSpan(buffer.data(), buffer.size()));
-        
-        spdlog::info("File Properties:");
-        spdlog::info("  Total Bytes   : {}", meta.total_bytes);
-        spdlog::info("  Is Binary     : {}", meta.is_binary ? "Yes" : "No");
-        spdlog::info("  Is Valid UTF-8: {}", meta.is_valid_utf8 ? "Yes" : "No");
-        if (meta.global_island_hint != IslandType::Unknown) {
-            spdlog::info("  Global Hint   : {}", to_string(meta.global_island_hint));
-        }
+    }
 
-        if (!meta.is_binary) {
-            spdlog::info("Running Text Analysis on first block...");
-            Block b = Block::from(buffer.data(), static_cast<u32>(buffer.size()));
-            analysis::TextAnalyzer text_analyzer;
-            analysis::AnalysisResult res = text_analyzer.analyze(b.view());
-            
-            spdlog::info("Analysis Results:");
-            spdlog::info("  Tokens        : {}", res.tokens.size());
-            spdlog::info("  Alpha Ratio   : {:.2f}", res.alpha_ratio);
-            spdlog::info("  Digit Ratio   : {:.2f}", res.digit_ratio);
-            spdlog::info("  WS Ratio      : {:.2f}", res.ws_ratio);
-            spdlog::info("  Punct Ratio   : {:.2f}", res.punct_ratio);
-            spdlog::info("  Bracket Dens. : {:.2f}", res.bracket_density);
-            
-            if (!res.islands.empty()) {
-                spdlog::info("  Primary Island: {}", to_string(res.islands[0].type));
+    ArchiveWriter archive;
+    if (!analyze_only) {
+        if (!archive.open(output).has_value()) {
+            spdlog::error("Failed to open output file: {}", output);
+            return EXIT_FAILURE;
+        }
+    }
+
+    // Thread pool setup
+    BS::thread_pool pool;
+    size_t block_size = 1024 * 1024; // 1 MB
+    size_t num_blocks = (buffer.size() + block_size - 1) / block_size;
+    if (num_blocks == 0) num_blocks = 1;
+
+    struct BlockResult {
+        BlockEntry entry;
+        std::vector<u8> compressed_data;
+    };
+
+    std::vector<std::future<BlockResult>> futures;
+    spdlog::info("Processing {} block(s) with {} threads...", num_blocks, pool.get_thread_count());
+
+    for (size_t i = 0; i < num_blocks; ++i) {
+        size_t offset = i * block_size;
+        size_t size = std::min(block_size, buffer.size() - offset);
+        
+        hypercore::ByteSpan block_span(buffer.data() + offset, size);
+
+        futures.push_back(pool.submit_task([block_span, offset]() -> BlockResult {
+            BlockResult result;
+            result.entry.offset = 0; 
+            result.entry.original_size = static_cast<u32>(block_span.size());
+            result.entry.dominant_island = static_cast<u8>(IslandType::Unknown);
+
+            if (block_span.empty()) {
+                result.entry.compressed_size = 0;
+                return result;
             }
 
-            spdlog::info("Running Pattern Mining...");
+            Block b = Block::from(block_span.data(), static_cast<u32>(block_span.size()));
+            
+            analysis::TextAnalyzer text_analyzer;
+            analysis::AnalysisResult res = text_analyzer.analyze(b.view());
+            if (!res.islands.empty()) {
+                result.entry.dominant_island = static_cast<u8>(res.islands[0].type);
+            }
+
             analysis::PatternMiner miner;
-            if (meta.global_island_hint == IslandType::Binary) {
+            if (result.entry.dominant_island == static_cast<u8>(IslandType::Binary)) {
                 miner.mine_phrases(b.view().span(), 8);
             } else {
                 miner.mine_ngrams(b.view().span(), res.tokens);
             }
-            
-            auto top_candidates = miner.extract_top_candidates(5);
-            spdlog::info("Top 5 Dictionary Candidates:");
-            for (const auto& c : top_candidates) {
-                std::string display_seq = c.sequence;
-                // Replace newlines with spaces for clean printing
-                std::replace(display_seq.begin(), display_seq.end(), '\n', ' ');
-                std::replace(display_seq.begin(), display_seq.end(), '\r', ' ');
-                if (display_seq.length() > 40) {
-                    display_seq = display_seq.substr(0, 37) + "...";
-                }
-                spdlog::info("  [{}] (freq: {}, utility: {})", display_seq, c.frequency, c.utility_score);
-            }
 
-            spdlog::info("Running Grammar Building (Re-Pair)...");
             analysis::GrammarBuilder grammar;
             grammar.build_from_bytes(b.view().span());
-            
-            spdlog::info("Grammar Results:");
-            spdlog::info("  Original Length : {}", b.size());
-            spdlog::info("  Compressed Len  : {}", grammar.get_compressed_sequence().size());
-            spdlog::info("  Rules Generated : {}", grammar.get_rules().size());
 
-            spdlog::info("Running Prediction Engine Simulation...");
             ContextMixer mixer;
             mixer.add_predictor(std::make_unique<CharacterPredictor>());
-            
-            PredictorContext p_ctx;
-            p_ctx.island = meta.global_island_hint;
-            
-            f64 total_entropy = 0.0;
-            const u8* data = b.data();
 
-            // Set up actual physical rANS encoding
+            PredictorContext p_ctx;
+            p_ctx.island = static_cast<IslandType>(result.entry.dominant_island);
+
             BitWriter bit_writer;
             RansEncoder encoder(bit_writer);
 
-            for (u32 i = 0; i < b.size(); ++i) {
-                p_ctx.position = i;
-                p_ctx.history = ByteSpan(data, i); // Up to current byte
-                
+            for (u32 j = 0; j < b.size(); ++j) {
+                p_ctx.position = j;
+                p_ctx.history = ByteSpan(b.data(), j);
                 ByteDistribution dist = mixer.predict(p_ctx);
-                u8 actual_byte = data[i];
-                
-                // Add the negative log2 probability to our entropy sum (cross-entropy)
-                f32 p = dist[actual_byte];
-                if (p > 0.0f) {
-                    total_entropy += -std::log2(p);
-                } else {
-                    total_entropy += 32.0; // penalty for zero probability
-                }
-                
-                // Quantize and encode!
+                u8 actual_byte = b.data()[j];
                 QuantizedDistribution q_dist = QuantizedDistribution::from(dist);
                 encoder.encode_symbol(actual_byte, q_dist);
-
-                // Update the model with what actually happened
                 mixer.update(p_ctx, actual_byte);
             }
-            
             encoder.flush();
 
-            f64 bpb = total_entropy / b.size();
-            spdlog::info("Prediction Results:");
-            spdlog::info("  Total Entropy   : {:.2f} bits", total_entropy);
-            spdlog::info("  Bits Per Byte   : {:.3f} bpb", bpb);
-            spdlog::info("  Estimated Ratio : {:.2f}x", 8.0 / bpb);
-
-            spdlog::info("Entropy Coding (rANS) Results:");
-            spdlog::info("  Encoded Bytes   : {}", bit_writer.get_buffer().size());
-            f64 actual_bpb = static_cast<f64>(bit_writer.get_total_bits()) / b.size();
-            spdlog::info("  Actual bpb      : {:.3f}", actual_bpb);
-            spdlog::info("  Actual Ratio    : {:.2f}x", b.size() / static_cast<f64>(bit_writer.get_buffer().size()));
-
-            if (!analyze_only) {
-                spdlog::info("Running Phase 8 Archive Assembly...");
-                ArchiveWriter archive;
-                if (!archive.open(output).has_value()) {
-                    spdlog::error("Failed to open output file: {}", output);
-                    return EXIT_FAILURE;
-                }
-
-                BlockEntry b_entry;
-                b_entry.original_size = static_cast<u32>(b.size());
-                b_entry.compressed_size = static_cast<u32>(bit_writer.get_buffer().size());
-                b_entry.dominant_island = static_cast<u8>(meta.global_island_hint);
-                
-                // Currently writing block data
-                if (!archive.write_block(b_entry, ByteSpan(bit_writer.get_buffer().data(), bit_writer.get_buffer().size())).has_value()) {
-                    spdlog::error("Failed to write block to archive");
-                    return EXIT_FAILURE;
-                }
-
-                // For now, no dictionary/grammar sections written as bytes, we will do that in later phases.
-                ArchiveHeader a_head;
-                a_head.num_blocks = 1;
-                a_head.original_size = meta.total_bytes;
-                
-                // Compute BLAKE3 hash of the original uncompressed file buffer
-                blake3_hasher hasher;
-                blake3_hasher_init(&hasher);
-                blake3_hasher_update(&hasher, buffer.data(), buffer.size());
-                blake3_hasher_finalize(&hasher, a_head.blake3, sizeof(a_head.blake3));
-                
-                std::vector<BlockEntry> b_index = { b_entry };
-                if (!archive.finalize(a_head, b_index).has_value()) {
-                    spdlog::error("Failed to finalize archive");
-                    return EXIT_FAILURE;
-                }
-
-                spdlog::info("Archive assembled successfully at {}", output);
-            }
-        }
-        return EXIT_SUCCESS;
+            result.entry.compressed_size = static_cast<u32>(bit_writer.get_buffer().size());
+            result.compressed_data = bit_writer.get_buffer();
+            return result;
+        }));
     }
 
-    // ── Placeholder: real compression pipeline goes here (Phase 7) ───────────
-    spdlog::warn("Compression pipeline not yet implemented (Phase 7).");
-    spdlog::warn("This is the Phase 2 skeleton — htx infrastructure only.");
-    // ─────────────────────────────────────────────────────────────────────────
+    std::vector<BlockEntry> block_index;
+    u64 current_archive_offset = 68; // ArchiveHeader size
+
+    for (auto& fut : futures) {
+        BlockResult res = fut.get();
+        if (!analyze_only) {
+            res.entry.offset = current_archive_offset;
+            if (!archive.write_block(res.entry, ByteSpan(res.compressed_data.data(), res.compressed_data.size())).has_value()) {
+                spdlog::error("Failed to write block to archive");
+                return EXIT_FAILURE;
+            }
+            current_archive_offset += res.compressed_data.size();
+        }
+        block_index.push_back(res.entry);
+    }
+
+    if (!analyze_only) {
+        ArchiveHeader a_head;
+        a_head.num_blocks = static_cast<u32>(block_index.size());
+        a_head.original_size = input_size;
+
+        blake3_hasher hasher;
+        blake3_hasher_init(&hasher);
+        blake3_hasher_update(&hasher, buffer.data(), buffer.size());
+        blake3_hasher_finalize(&hasher, a_head.blake3, sizeof(a_head.blake3));
+
+        if (!archive.finalize(a_head, block_index).has_value()) {
+            spdlog::error("Failed to finalize archive");
+            return EXIT_FAILURE;
+        }
+
+        spdlog::info("Archive assembled successfully at {}", output);
+    }
 
     return EXIT_SUCCESS;
 }
