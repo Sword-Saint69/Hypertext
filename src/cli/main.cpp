@@ -30,6 +30,7 @@ using namespace hypercore;
 #include <hypercore/analysis/TextAnalyzer.hpp>
 #include <hypercore/analysis/FileAnalyzer.hpp>
 #include <hypercore/analysis/PatternMiner.hpp>
+#include <hypercore/analysis/GrammarBuilder.hpp>
 #include <fstream>
 #include <vector>
 
@@ -140,6 +141,15 @@ static int cmd_compress(const std::string& input,
                 }
                 spdlog::info("  [{}] (freq: {}, utility: {})", display_seq, c.frequency, c.utility_score);
             }
+
+            spdlog::info("Running Grammar Building (Re-Pair)...");
+            analysis::GrammarBuilder grammar;
+            grammar.build_from_bytes(b.view().span());
+            
+            spdlog::info("Grammar Results:");
+            spdlog::info("  Original Length : {}", b.size());
+            spdlog::info("  Compressed Len  : {}", grammar.get_compressed_sequence().size());
+            spdlog::info("  Rules Generated : {}", grammar.get_rules().size());
         }
         return EXIT_SUCCESS;
     }

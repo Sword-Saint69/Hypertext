@@ -2,6 +2,7 @@ add_library(hypercore_analysis STATIC
     TextAnalyzer.cpp
     FileAnalyzer.cpp
     PatternMiner.cpp
+    GrammarBuilder.cpp
 )
 
 target_include_directories(hypercore_analysis

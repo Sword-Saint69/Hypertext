@@ -5,6 +5,7 @@ add_executable(hypercore_tests
     test_analysis.cpp
     test_file_analysis.cpp
     test_pattern_mining.cpp
+    test_grammar.cpp
 )
 
 target_link_libraries(hypercore_tests
