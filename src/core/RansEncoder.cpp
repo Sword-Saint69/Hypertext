@@ -29,8 +29,7 @@ void RansEncoder::encode_symbol(u8 symbol, const QuantizedDistribution& dist) {
     // In standard rANS, x_max = 2^32 - 1. We'll flush bytes (8 bits).
     // Our upper bound is RANS_L * (QuantizedDistribution::TABLE_SIZE / freq).
     // Actually, to keep it simple, we normalize to stay in [L, 2L-1] scaled by freq.
-    // The exact condition:
-    u32 max_state = ((RANS_L * 2) / QuantizedDistribution::TABLE_SIZE) * freq;
+    // Exact condition: max_state = ((RANS_L * 2) / QuantizedDistribution::TABLE_SIZE) * freq
     
     // But since M = 4096, L = 65536, L/M = 16.
     // So max_state = 32 * freq.
