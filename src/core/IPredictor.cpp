@@ -42,9 +42,9 @@ QuantizedDistribution QuantizedDistribution::from(const ByteDistribution& dist) 
     u32 total = 0;
     
     // First pass: simply multiply by TABLE_SIZE and floor
-    for (int i = 0; i < 256; ++i) {
-        u32 count = static_cast<u32>(dist[i] * static_cast<f32>(TABLE_SIZE));
-        q[i] = count;
+    for (u32 i = 0; i < 256; ++i) {
+        u32 count = static_cast<u32>(dist[static_cast<u8>(i)] * static_cast<f32>(TABLE_SIZE));
+        q[static_cast<u8>(i)] = count;
         total += count;
     }
     
@@ -56,27 +56,27 @@ QuantizedDistribution QuantizedDistribution::from(const ByteDistribution& dist) 
         // Find max element
         int max_idx = 0;
         u32 max_val = q[0];
-        for (int i = 1; i < 256; ++i) {
-            if (q[i] > max_val) {
-                max_val = q[i];
-                max_idx = i;
+        for (u32 i = 1; i < 256; ++i) {
+            if (q[static_cast<u8>(i)] > max_val) {
+                max_val = q[static_cast<u8>(i)];
+                max_idx = static_cast<int>(i);
             }
         }
-        q[max_idx] += remainder;
+        q[static_cast<u8>(max_idx)] += remainder;
     } else if (total > TABLE_SIZE) {
         // This shouldn't normally happen with flooring, but just in case
         u32 excess = total - TABLE_SIZE;
         // Find max element and subtract
         int max_idx = 0;
         u32 max_val = q[0];
-        for (int i = 1; i < 256; ++i) {
-            if (q[i] > max_val) {
-                max_val = q[i];
-                max_idx = i;
+        for (u32 i = 1; i < 256; ++i) {
+            if (q[static_cast<u8>(i)] > max_val) {
+                max_val = q[static_cast<u8>(i)];
+                max_idx = static_cast<int>(i);
             }
         }
-        if (q[max_idx] >= excess) {
-            q[max_idx] -= excess;
+        if (q[static_cast<u8>(max_idx)] >= excess) {
+            q[static_cast<u8>(max_idx)] -= excess;
         }
     }
     
