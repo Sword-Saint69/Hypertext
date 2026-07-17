@@ -39,7 +39,9 @@ using namespace hypercore;
 #include <cmath>
 #include <fstream>
 #include <vector>
+#include <future>
 #include <blake3.h>
+#include <BS_thread_pool.hpp>
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Logger setup
