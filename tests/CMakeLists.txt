@@ -2,11 +2,13 @@ add_executable(hypercore_tests
     test_smoke.cpp
     test_block.cpp
     test_allocator.cpp
+    test_analysis.cpp
 )
 
 target_link_libraries(hypercore_tests
     PRIVATE hypercore_core
             hypercore_memory
+            hypercore_analysis
             hypercore_warnings
             GTest::gtest_main
             spdlog::spdlog

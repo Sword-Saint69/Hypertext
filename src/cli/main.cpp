@@ -27,6 +27,10 @@
 namespace fs = std::filesystem;
 using namespace hypercore;
 
+#include <hypercore/analysis/TextAnalyzer.hpp>
+#include <fstream>
+#include <vector>
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Logger setup
 // ─────────────────────────────────────────────────────────────────────────────
@@ -64,7 +68,8 @@ static int cmd_compress(const std::string& input,
                          const std::string& output,
                          int level,
                          bool no_gpu,
-                         bool no_grammar) {
+                         bool no_grammar,
+                         bool analyze_only) {
     spdlog::info("Compressing: {} → {}", input, output);
     spdlog::info("  Level    : {}", level);
     spdlog::info("  GPU      : {}", !no_gpu ? "enabled" : "disabled");
@@ -77,6 +82,30 @@ static int cmd_compress(const std::string& input,
 
     const auto input_size = fs::file_size(input);
     spdlog::info("  Input    : {} ({})", input, format_bytes(input_size));
+
+    if (analyze_only) {
+        spdlog::info("Running Phase 3 Analysis on first block...");
+        std::ifstream file(input, std::ios::binary);
+        std::vector<u8> buffer(std::min<u64>(input_size, 256 * 1024));
+        file.read(reinterpret_cast<char*>(buffer.data()), buffer.size());
+        
+        Block b = Block::from(buffer.data(), static_cast<u32>(buffer.size()));
+        analysis::TextAnalyzer analyzer;
+        analysis::AnalysisResult res = analyzer.analyze(b.view());
+        
+        spdlog::info("Analysis Results:");
+        spdlog::info("  Tokens        : {}", res.tokens.size());
+        spdlog::info("  Alpha Ratio   : {:.2f}", res.alpha_ratio);
+        spdlog::info("  Digit Ratio   : {:.2f}", res.digit_ratio);
+        spdlog::info("  WS Ratio      : {:.2f}", res.ws_ratio);
+        spdlog::info("  Punct Ratio   : {:.2f}", res.punct_ratio);
+        spdlog::info("  Bracket Dens. : {:.2f}", res.bracket_density);
+        
+        if (!res.islands.empty()) {
+            spdlog::info("  Primary Island: {}", to_string(res.islands[0].type));
+        }
+        return EXIT_SUCCESS;
+    }
 
     // ── Placeholder: real compression pipeline goes here (Phase 7) ───────────
     spdlog::warn("Compression pipeline not yet implemented (Phase 7).");
@@ -147,6 +176,7 @@ int main(int argc, char** argv) {
     int         compress_level   = 5;
     bool        no_gpu           = false;
     bool        no_grammar       = false;
+    bool        analyze_only     = false;
 
     compress_cmd->add_option("input",  compress_input,  "Input file path")->required();
     compress_cmd->add_option("output", compress_output, "Output .htx archive path")->required();
@@ -154,6 +184,7 @@ int main(int argc, char** argv) {
                              "Compression level: 1 (fast) – 9 (best)")->check(CLI::Range(1, 9));
     compress_cmd->add_flag("--no-gpu",     no_gpu,     "Disable GPU acceleration");
     compress_cmd->add_flag("--no-grammar", no_grammar, "Disable grammar compression");
+    compress_cmd->add_flag("--analyze-only", analyze_only, "Run Phase 3 Text Analysis on the first block and exit");
 
     // ── decompress subcommand ─────────────────────────────────────────────────
     auto* decompress_cmd = app.add_subcommand("decompress", "Decompress a .htx archive");
